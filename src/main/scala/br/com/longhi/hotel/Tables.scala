@@ -107,7 +107,7 @@ object Tables {
       Tables.quartos += Quarto(numero = 306, tipo = "Master", capacidade = 2),
       Tables.quartos += Quarto(numero = 307, tipo = "Master", capacidade = 2),
       Tables.quartos += Quarto(numero = 308, tipo = "Triple Master", capacidade = 3),
-      Tables.hospedes += Hospede(cpf = "000.000.000-00", nome = "Jhon Doe")
+      Tables.hospedes += Hospede(cpf = "000.000.000-00", nome = "John Doe")
     )
 
 }

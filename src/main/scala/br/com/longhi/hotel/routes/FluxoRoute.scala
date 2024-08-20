@@ -44,7 +44,7 @@ class FluxoRoute(val db: Database)(implicit val swagger: Swagger) extends Scalat
       .parameter(bodyParam[DTO.FluxoEntradaSaida]("checkOutDTO").description("Dados necessários para o check-out"))
       .responseMessage(ResponseMessage(200, "Check-out realizado com sucesso"))
       .responseMessage(ResponseMessage(400, "Corpo da requisição inválido"))
-      .responseMessage(ResponseMessage(409, "Hóspede nao realizou check-in ou a data check-out é posterior ou igual a de check-in"))
+      .responseMessage(ResponseMessage(409, "A data de check-out deve ser posterior à data de check-in."))
       .responseMessage(ResponseMessage(404, "Quarto ou reserva não localizada."))
       .responseMessage(ResponseMessage(500, "Erro interno no servidor."))
 

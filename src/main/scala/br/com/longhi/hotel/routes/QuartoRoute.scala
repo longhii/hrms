@@ -48,7 +48,6 @@ class QuartoRoute(val db: Database)(implicit val swagger: Swagger) extends Scala
     }
   }
 
-  // Documentação do endpoint GET /
   val getQuartos =
     (apiOperation[List[Quarto]]("getQuartos")
       summary "Retorna a lista de quartos"

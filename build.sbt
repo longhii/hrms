@@ -1,7 +1,7 @@
 val ScalatraVersion = "3.1.0"
 
 ThisBuild / scalaVersion := "2.12.19"
-ThisBuild / organization := "br.com.oystr"
+ThisBuild / organization := "br.com.longhi"
 
 lazy val hello = (project in file("."))
   .settings(
@@ -24,6 +24,7 @@ lazy val hello = (project in file("."))
 enablePlugins(SbtTwirl)
 enablePlugins(JettyPlugin)
 
+Test / fork := true
 Jetty / containerLibs := Seq("org.eclipse.jetty.ee10" % "jetty-ee10-runner" % "12.0.11" intransitive())
 Jetty / containerMain := "org.eclipse.jetty.ee10.runner.Runner"
 
