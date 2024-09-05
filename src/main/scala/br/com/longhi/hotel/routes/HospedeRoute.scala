@@ -2,16 +2,17 @@ package br.com.longhi.hotel.routes
 
 import br.com.longhi.hotel.Tables
 import br.com.longhi.hotel.Tables.Hospede
+import br.com.longhi.hotel.databases.SlickDatabase._
 import org.json4s.JsonDSL._
-import org.scalatra.swagger.{ResponseMessage, Swagger, SwaggerSupport}
 import org.scalatra._
+import org.scalatra.swagger.{ResponseMessage, Swagger, SwaggerSupport}
 import org.slf4j.LoggerFactory
 import slick.jdbc.H2Profile.api._
 
 import scala.util.{Failure, Success, Try}
 
-class HospedeRoute(val db: Database)(implicit val swagger: Swagger) extends ScalatraServlet
-  with Routes
+class HospedeRoute(implicit val swagger: Swagger)
+  extends Routes
   with SwaggerSupport {
 
   protected val applicationDescription: String = "API para gerenciamento de hóspedes"

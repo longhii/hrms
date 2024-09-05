@@ -1,24 +1,20 @@
 package br.com.longhi.hotel.routes
 
 import br.com.longhi.hotel.DTO
+import br.com.longhi.hotel.exceptions.ParameterNotFoundException
 import br.com.longhi.hotel.services.FluxoService
 import org.json4s.JsonDSL._
 import org.scalatra._
 import org.scalatra.swagger.{ResponseMessage, Swagger, SwaggerSupport}
 import org.slf4j.LoggerFactory
-import slick.jdbc.H2Profile.api._
 
-import java.time.LocalDateTime
-import java.time.format.DateTimeParseException
-import scala.util.{Failure, Success, Try}
-
-class FluxoRoute(val db: Database)(implicit val swagger: Swagger) extends ScalatraServlet
-  with Routes
-  with SwaggerSupport {
+class FluxoRoute(implicit val swagger: Swagger)
+  extends Routes
+    with SwaggerSupport {
 
   protected val applicationDescription: String = "API para gerenciamento de fluxo"
 
-  private lazy val service = new FluxoService(db)
+  private lazy val service = new FluxoService
 
   private lazy val log = LoggerFactory.getLogger(classOf[FluxoRoute])
 
@@ -32,9 +28,7 @@ class FluxoRoute(val db: Database)(implicit val swagger: Swagger) extends Scalat
       .responseMessage(ResponseMessage(404, "Quarto ou reserva não localizada."))
 
   post("/check-in", operation(postCheckIn)) {
-    Try(parsedBody.extract[DTO.FluxoEntradaSaida])
-      .map(service.efetuarCheckIn)
-      .getOrElse(BadRequest("Corpo da requisição inválido."))
+    service.efetuarCheckIn(parsedBody.extract[DTO.FluxoEntradaSaida])
   }
 
   val postCheckOut =
@@ -49,15 +43,12 @@ class FluxoRoute(val db: Database)(implicit val swagger: Swagger) extends Scalat
       .responseMessage(ResponseMessage(500, "Erro interno no servidor."))
 
   post("/check-out", operation(postCheckOut)) {
-    Try(parsedBody.extract[DTO.FluxoEntradaSaida])
-      .map { fes =>
-        service.efetuarCheckOut(fes).map { _ => Ok() }
-          .recover {
-            case e: NoSuchElementException => NotFound(e.getMessage)
-            case e: IllegalArgumentException => Conflict(e.getMessage)
-            case e: Exception => InternalServerError(e.getMessage)
-          }
-      }.getOrElse(BadRequest("Corpo da requisição inválido."))
+    service.efetuarCheckOut(parsedBody.extract[DTO.FluxoEntradaSaida])
+      .map(_ => Ok())
+      .recover {
+        case e: NoSuchElementException => NotFound(e.getMessage)
+        case e: IllegalArgumentException => Conflict(e.getMessage)
+      }
   }
 
   val postReserva =
@@ -70,18 +61,15 @@ class FluxoRoute(val db: Database)(implicit val swagger: Swagger) extends Scalat
       .responseMessage(ResponseMessage(409, "Já existe uma reserva para o(s) quarto(s) selecionado(s) dentro do período especificado, ou data check-in anterior a check-out."))
 
   post("/reserva", operation(postReserva)) {
-    Try(parsedBody.extract[DTO.Reserva]) match {
-      case Success(reserva) =>
-        service.efetuarReserva(reserva).map { id =>
-          Created(compact(render("reservaId" -> id)))
-        }.recover {
-          case e: Exception =>
-            log.info("Erro ao efetuar reserva: " + e.getMessage, e)
-            Conflict(e.getMessage)
-        }
-      case Failure(_) =>
-        BadRequest("Corpo da requisição inválido.")
-    }
+    service
+      .efetuarReserva(parsedBody.extract[DTO.Reserva])
+      .map { id =>
+        Created(compact(render("reservaId" -> id)))
+      }.recover {
+        case e: IllegalArgumentException =>
+          log.info("Erro ao efetuar reserva: " + e.getMessage, e)
+          Conflict(e.getMessage)
+      }
   }
 
   val getTaxaOcupacao =
@@ -94,24 +82,13 @@ class FluxoRoute(val db: Database)(implicit val swagger: Swagger) extends Scalat
       .responseMessage(ResponseMessage(500, "Erro interno do servidor"))
 
   get("/taxa-ocupacao", operation(getTaxaOcupacao)) {
-    params.get("data") match {
-      case Some(d) =>
-        try {
-          val data = LocalDateTime.parse(d)
-          service.verificarTaxaOcupacao(data)
-            .map { occupancy =>
-              Ok(occupancy)
-            }.recover {
-              case ex: Exception =>
-                InternalServerError(s"Ocorreu um erro ao calcular a taxa de ocupação: ${ex.getMessage}")
-            }
-        } catch {
-          case _: DateTimeParseException =>
-            BadRequest("Formato de data inválido. Utilize o formato dado como exemplo: '2007-12-03T10:15:30'.")
-        }
-      case None =>
-        BadRequest("Parâmetro data não fornecido.")
-    }
+    val dataStr = params
+      .getOrElse("data", throw new ParameterNotFoundException("Parâmetro: 'data' não fornecido."))
+
+    service
+      .verificarTaxaOcupacao(dataStr)
+      .map(tx => Ok(tx))
+      .recover { case e: IllegalArgumentException => BadRequest(e.getMessage) }
   }
 
 }

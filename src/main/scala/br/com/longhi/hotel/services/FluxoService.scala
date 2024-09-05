@@ -1,67 +1,86 @@
 package br.com.longhi.hotel.services
 
 import br.com.longhi.hotel.DTO.Reserva
+import br.com.longhi.hotel.databases.SlickDatabase._
 import br.com.longhi.hotel.{DTO, Tables}
-import org.scalatra.{BadRequest, NoContent, NotFound, Ok}
+import org.scalatra.{NoContent, NotFound, Ok}
 import org.slf4j.LoggerFactory
 import slick.jdbc.H2Profile.api._
 
 import java.time.LocalDateTime
-import scala.concurrent.ExecutionContext
+import java.time.format.DateTimeParseException
+import scala.concurrent.{ExecutionContext, Future}
 import scala.math.BigDecimal.RoundingMode
+import scala.util.Try
 
-class FluxoService(db: Database)(implicit val executor: ExecutionContext) {
+class FluxoService(implicit val executor: ExecutionContext) {
 
   private lazy val log = LoggerFactory.getLogger(classOf[FluxoService])
 
+  // TODO: Ajustar erro personalizado p/ Referential integrity constraint violation de quarto e hóspede
   def efetuarReserva(reservaDTO: Reserva) = {
     log.info("Efetuando a reserva...")
 
     val validacaoDataCheckInCheckOut =
       if (reservaDTO.dataCheckIn.toLocalDate.isAfter(reservaDTO.dataCheckOut) || reservaDTO.dataCheckIn.toLocalDate.equals(reservaDTO.dataCheckOut)) {
-        DBIO.failed(new Exception("A data de check-in deve ser anterior a data de check-out."))
+        DBIO.failed(new IllegalArgumentException("A data de check-in deve ser anterior a data de check-out."))
       } else {
         DBIO.successful()
       }
 
     val action = for {
       _ <- validacaoDataCheckInCheckOut
-      exists <- Tables.reservasQuartos
-        .join(Tables.quartos)
-        .on(_.quartoId === _.id)
-        .filter { case (rq, q) =>
-          rq.quartoId.inSet(reservaDTO.quartos) &&
-            q.disponivelAs > reservaDTO.dataCheckIn
-        }
-        .exists
-        .result
-
-      result <- if (exists) {
-        DBIO.failed(new Exception("Já existe uma reserva para o(s) quarto(s) selecionado(s) dentro do período especificado."))
-      } else {
-        val insertReservaAction =
-          (Tables.reservas returning Tables.reservas.map(_.id)) += Tables.Reserva(hospedeId = reservaDTO.hospedeId)
-
-        insertReservaAction.flatMap { reservaId =>
-          val insertReservasQuartosActions = reservaDTO.quartos.map { quartoId =>
-            val insertAction = Tables.reservasQuartos += Tables.ReservaQuartos(reservaId, quartoId, previsaoCheckIn = reservaDTO.dataCheckIn,
-              previsaoCheckOut = reservaDTO.dataCheckOut,
-              dataCheckIn = None,
-              dataCheckOut = None)
-
-            val updateAction = Tables.quartos
-              .filter(q => q.id === quartoId)
-              .map(q => q.disponivelAs)
-              .update(Some(reservaDTO.dataCheckOut.atTime(17, 0)))
-
-            insertAction.flatMap(_ => updateAction)
-          }
-          DBIO.sequence(insertReservasQuartosActions).map(_ => reservaId)
-        }
-      }
+      _ <- verificarDisponibilidadeQuarto(reservaDTO)
+      result <- reservarQuartos(reservaDTO)
     } yield result
 
     db.run(action.transactionally)
+  }
+
+  private def verificarDisponibilidadeQuarto(reservaDTO: Reserva) =
+    Tables.reservasQuartos
+      .join(Tables.quartos)
+      .on(_.quartoId === _.id)
+      .filter { case (rq, q) =>
+        rq.quartoId.inSet(reservaDTO.quartos) &&
+          q.disponivelAs > reservaDTO.dataCheckIn
+      }
+      .exists
+      .result
+      .flatMap { existe =>
+        if (existe) {
+          DBIO.failed(new IllegalArgumentException("Já existe uma reserva para o(s) quarto(s) selecionado(s) dentro do período especificado."))
+        } else {
+          DBIO.successful(true)
+        }
+      }
+
+  private def reservarQuartos(reservaDTO: Reserva) = {
+    val insertReservaAction =
+      (Tables.reservas returning Tables.reservas.map(_.id)) +=
+        Tables.Reserva(hospedeId = reservaDTO.hospedeId)
+
+    insertReservaAction.flatMap { reservaId =>
+      val insertReservasQuartosActions = reservaDTO
+        .quartos
+        .map { quartoId =>
+          val insertAction = Tables.reservasQuartos += Tables.ReservaQuartos(
+            reservaId,
+            quartoId,
+            previsaoCheckIn = reservaDTO.dataCheckIn,
+            previsaoCheckOut = reservaDTO.dataCheckOut,
+            dataCheckIn = None,
+            dataCheckOut = None)
+
+          val updateAction = Tables.quartos
+            .filter(q => q.id === quartoId)
+            .map(q => q.disponivelAs)
+            .update(Some(reservaDTO.dataCheckOut.atTime(17, 0)))
+
+          insertAction.flatMap(_ => updateAction)
+        }
+      DBIO.sequence(insertReservasQuartosActions).map(_ => reservaId)
+    }
   }
 
   def efetuarCheckIn(checkInDTO: DTO.FluxoEntradaSaida) = {
@@ -140,30 +159,43 @@ class FluxoService(db: Database)(implicit val executor: ExecutionContext) {
     db.run(oq.transactionally)
   }
 
-  def verificarTaxaOcupacao(data: LocalDateTime) = {
+  def verificarTaxaOcupacao(data: String) = {
     log.info("Calculando taxa de ocupação...")
 
-    val quantidadeTotalQuartosAction = Tables.quartos.length.result
+    Future
+      .fromTry(Try(LocalDateTime.parse(data)))
+      .flatMap { dt =>
+        val quantidadeTotalQuartosAction = Tables.quartos.length.result
+        val quantidadeQuartosOcupadosAction = Tables.reservasQuartos
+          .join(Tables.quartos)
+          .on(_.quartoId === _.id)
+          .filter({ case (rq, q) => rq.previsaoCheckIn <= dt && q.disponivelAs >= dt })
+          .length
+          .result
 
-    val quantidadeQuartosOcupadosAction = Tables.reservasQuartos
-      .join(Tables.quartos)
-      .on(_.quartoId === _.id)
-      .filter({ case (rq, q) => rq.previsaoCheckIn <= data && q.disponivelAs >= data })
-      .length
-      .result
+        val totalQuartosFuture = db.run(quantidadeTotalQuartosAction)
+        val quartosOcupadosFuture = db.run(quantidadeQuartosOcupadosAction)
 
-    db.run(quantidadeTotalQuartosAction.flatMap { totalQuartos =>
-      quantidadeQuartosOcupadosAction.map { quartosOcupados =>
-        val taxaOcupacao = if (totalQuartos > 0) {
-          val ocupacao = quartosOcupados.toDouble / totalQuartos
-          val percentual = ocupacao * 100
-          BigDecimal(percentual).setScale(2, RoundingMode.HALF_EVEN).toDouble
-        } else {
-          0.0
+        for {
+          totalQuartos <- totalQuartosFuture
+          quartosOcupados <- quartosOcupadosFuture
+        } yield {
+          val taxaOcupacao = if (totalQuartos > 0) {
+            val ocupacao = quartosOcupados.toDouble / totalQuartos
+            val percentual = ocupacao * 100
+            BigDecimal(percentual).setScale(2, RoundingMode.HALF_EVEN).toDouble
+          } else {
+            0.0
+          }
+          taxaOcupacao
         }
-        taxaOcupacao
+      }.recover {
+        case _: DateTimeParseException =>
+          throw new IllegalArgumentException("Formato de data inválido. Utilize o formato: '2007-12-03T10:15:30'.")
+        case ex: Exception =>
+          log.error("Erro ao calcular a taxa de ocupação", ex)
+          throw ex
       }
-    })
   }
 
 }

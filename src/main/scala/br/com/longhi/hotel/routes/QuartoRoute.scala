@@ -7,11 +7,12 @@ import org.scalatra._
 import org.scalatra.swagger._
 import org.slf4j.LoggerFactory
 import slick.jdbc.H2Profile.api._
+import br.com.longhi.hotel.databases.SlickDatabase._
 
 import scala.util.{Failure, Success, Try}
 
-class QuartoRoute(val db: Database)(implicit val swagger: Swagger) extends ScalatraServlet
-  with Routes
+class QuartoRoute(implicit val swagger: Swagger)
+  extends Routes
   with SwaggerSupport {
 
   protected val applicationDescription: String = "API para gerenciamento de quartos"
