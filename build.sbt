@@ -27,5 +27,6 @@ enablePlugins(JettyPlugin)
 Test / fork := true
 Jetty / containerLibs := Seq("org.eclipse.jetty.ee10" % "jetty-ee10-runner" % "12.0.11" intransitive())
 Jetty / containerMain := "org.eclipse.jetty.ee10.runner.Runner"
+Jetty / javaOptions := Seq("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005")
 
 
