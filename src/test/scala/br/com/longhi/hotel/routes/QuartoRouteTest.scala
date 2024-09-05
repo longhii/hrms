@@ -1,5 +1,6 @@
 package br.com.longhi.hotel.routes
 
+import br.com.longhi.hotel.databases.SlickDatabase._
 import br.com.longhi.hotel.{ControleReservasSwagger, Tables}
 import org.junit.Assert.assertEquals
 import org.scalatest.BeforeAndAfterEach
@@ -14,12 +15,7 @@ class QuartoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
 
   private implicit val swagger = new ControleReservasSwagger
 
-  private val db = Database
-    .forURL(
-      "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1",
-      driver = "org.h2.Driver")
-
-  addServlet(new QuartoRoute(db), "/quartos")
+  addServlet(new QuartoRoute, "/quartos")
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -31,10 +27,6 @@ class QuartoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
     super.afterEach()
 
     Await.result(db.run(Tables.quartos.schema.drop), 2.seconds)
-  }
-
-  override def afterAll(): Unit = {
-    db.close()
   }
 
   test("Validar criação de quarto com sucesso") {

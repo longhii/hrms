@@ -2,6 +2,7 @@ package br.com.longhi.hotel.routes
 
 import br.com.longhi.hotel.Tables.{hospedes, quartos, reservas, reservasQuartos}
 import br.com.longhi.hotel.{ControleReservasSwagger, Tables}
+import br.com.longhi.hotel.databases.SlickDatabase._
 import org.junit.Assert.assertEquals
 import org.scalatest.BeforeAndAfterEach
 import org.scalatra.test.scalatest.ScalatraFunSuite
@@ -17,12 +18,7 @@ class FluxoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
 
   private implicit val swagger = new ControleReservasSwagger
 
-  private val db = Database
-    .forURL(
-      "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1",
-      driver = "org.h2.Driver")
-
-  addServlet(new FluxoRoute(db), "/fluxo")
+  addServlet(new FluxoRoute, "/fluxo")
 
   private lazy val schema = Seq(hospedes, reservasQuartos, reservas, quartos)
 
@@ -46,7 +42,6 @@ class FluxoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
 
   override def afterAll(): Unit = {
     super.afterAll()
-    db.close()
   }
 
   private def inserirDependenciasTest(dataCheckIn: Option[LocalDateTime] = None,
@@ -303,6 +298,23 @@ class FluxoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
     }
   }
 
+  test("Validar erro para hospede não cadastrado ao efetuar reserva.") {
+    val json =
+      """
+        |{
+        | "hospedeId": 5,
+        | "dataCheckIn": "2024-09-03T22:00:00",
+        | "dataCheckOut": "2024-09-04",
+        | "quartos": [1]
+        |}
+        |""".stripMargin
+
+    post("/fluxo/reserva", body = json, headers = Map("Content-Type" -> "application/json")) {
+      assertEquals(500, status)
+      assertEquals("Erro interno no servidor. Por favor, entre em contato com o suporte.", body)
+    }
+  }
+
   test("Validar consulta taxa de ocupação") {
     Await.result(db.run(DBIO.seq(
       Tables.hospedes += Tables.Hospede(id = 1, cpf = "000.100.101-01", nome = "John Doe"),
@@ -332,7 +344,7 @@ class FluxoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
   test("Validar erro para consulta taxa de ocupação sem data fornecida") {
     get("/fluxo/taxa-ocupacao") {
       assertEquals(400, status)
-      assertEquals("Parâmetro data não fornecido.", body)
+      assertEquals("Parâmetro: 'data' não fornecido.", body)
     }
   }
 
@@ -341,7 +353,7 @@ class FluxoRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
 
     get(s"/fluxo/taxa-ocupacao?data=$dataParam") {
       assertEquals(400, status)
-      assertEquals("Formato de data inválido. Utilize o formato dado como exemplo: '2007-12-03T10:15:30'.", body)
+      assertEquals("Formato de data inválido. Utilize o formato: '2007-12-03T10:15:30'.", body)
     }
   }
 }

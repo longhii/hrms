@@ -1,5 +1,6 @@
 package br.com.longhi.hotel.routes
 
+import br.com.longhi.hotel.databases.SlickDatabase._
 import br.com.longhi.hotel.{ControleReservasSwagger, Tables}
 import org.junit.Assert.assertEquals
 import org.scalatest.BeforeAndAfterEach
@@ -14,13 +15,7 @@ class HospedeRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
 
   private implicit val swagger = new ControleReservasSwagger
 
-  private val db = Database
-    .forURL(
-      "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1",
-      executor = AsyncExecutor("test", numThreads = 10, queueSize = 1000),
-      driver = "org.h2.Driver")
-
-  addServlet(new HospedeRoute(db), "/hospedes")
+  addServlet(new HospedeRoute, "/hospedes")
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -29,7 +24,6 @@ class HospedeRouteTest extends ScalatraFunSuite with BeforeAndAfterEach {
 
   override def afterAll(): Unit = {
     Await.result(db.run(Tables.hospedes.schema.drop), 2.seconds)
-    db.close()
     super.afterAll()
   }
 
